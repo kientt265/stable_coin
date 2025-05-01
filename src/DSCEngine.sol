@@ -4,7 +4,8 @@ pragma solidity ^0.8.18;
 import {DecentralizedStableCoin} from "./DecentralizedStableCoint.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IREC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-/**
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+/*
  * @tiltle DSCEngine
  * @author PoloStone
  */
@@ -41,10 +42,12 @@ contract DSCEngine is ReentrancyGuard {
     /////////////////////////////
     ///// State Variables ///////
     ////////////////////////////
-
+    uint256 private constant ADDITIONAL_FEED_PRECISION = 1e10;
+    uint256 private constant PRECISION = 1e18;
     mapping(address token => address priceFeed) private s_priceFeed; //tokenToPriceFeed
     mapping(address user => mapping(address token => uint256 amount)) private s_collateralDeposited;
     mapping(address user => uint256 admountDscMinted) private s_DSCMinted;
+    address[] private s_collateralTokens;
     DecentralizedStableCoin private immutable i_dsc;
     /////////////////////
     ///// Events ///////
@@ -67,9 +70,9 @@ contract DSCEngine is ReentrancyGuard {
         }
         _;
     }
-    /////////////////////
+    ////////////////////////
     ///// Functions ///////
-    ///////////////////
+    ///////////////////////
 
     constructor(address[] memory tokenAdresses, address[] memory priceFeedAddresses, address dscAdress) {
         if (tokenAdresses.length != priceFeedAddresses.length) {
@@ -77,12 +80,13 @@ contract DSCEngine is ReentrancyGuard {
         }
         for (uint256 i = 0; i < tokenAdresses.length; i++) {
             s_priceFeed[tokenAdresses[i]] = priceFeedAddresses[i];
+            s_collateralTokens.push(tokenAdresses[i]);
         }
         i_dsc = DecentralizedStableCoin(dscAdress);
     }
-    /////////////////////
+    //////////////////////
     ///// External ///////
-    ///////////////////
+    ////////////////////
 
     function depositCollateralAndMintDsc() external {}
 
@@ -106,7 +110,7 @@ contract DSCEngine is ReentrancyGuard {
 
     function mintDsc(uint256 amountDscToMint) external moreThanZero(amountDscToMint) nonReentrant {
         s_DSCMinted[msg.sender] += amountDScToMint;
-        revertIfHealthFactorIsBroken(msg.sender);
+        _revertIfHealthFactorIsBroken(msg.sender);
 
     }
 
@@ -120,11 +124,33 @@ contract DSCEngine is ReentrancyGuard {
     ///// Private & Internal ///////
     ///////////////////////////////
 
+    function _getAccountInformation(address user) private view returns(uint256 totalDscMinted, uint256 collateralValueInUsd){
+        totalDscMinted = s_DSCMinted[user];
+        collateralValueInUsd = getAccountCollateralValue(user);
+    }
     function _healthFactor(address user) private view returns(uint256){
-        
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = _getAccountInformation(user);
     }
-    function revertIfHealthFactorIsBroken(adress user) internal view {
+    function _revertIfHealthFactorIsBroken(adress user) internal view {
 
     }
 
+    /////////////////////////////////////////////
+    ///// Public & Internal View Function ///////
+    ////////////////////////////////////////////
+
+    function getAccountCollateralValue(address user) public view returns(uint256 ) {
+        for(uint256 i = 0; i< s_collateralTokens.length; i++) {
+            address token = s_collateralTokens[i];
+            uint256 amount = s_collateralDeposited[user][token];
+            uint256 totalCollateralValueInUsd +=  getUsdValue(token, amount);
+        }
+        return totalCollateralValueInUsd;
+    }
+
+    function getUsdValue(address token, uint256 amount) public view returns(uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
+        (,int256 price,,,) = priceFeedd.lastestRoundData();
+        return (uint256(price)* ADDITIONAL_FEED_PRECISION * amount) / PRECISION; //(1000*1e8)* 1000 * 1e18
+    }
 }
