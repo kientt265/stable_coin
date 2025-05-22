@@ -150,6 +150,17 @@ contract DSCEngine {
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
+        function calculateHealthFactor(
+        uint256 totalDscMinted,
+        uint256 collateralValueInUsd
+    )
+        external
+        pure
+        returns (uint256)
+    {
+        return _calculateHealthFactor(totalDscMinted, collateralValueInUsd);
+    }
+
     function liquidate(address collateral, address user, uint256 debtToCover) external moreThanZero(debtToCover)  {
         uint256 startingUserHealthFactor = _healthFactor(user);
             if(startingUserHealthFactor >= MINT_HEALTH_FACTOR) {
@@ -216,6 +227,19 @@ contract DSCEngine {
         }
     }
 
+        function _calculateHealthFactor(
+        uint256 totalDscMinted,
+        uint256 collateralValueInUsd
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        if (totalDscMinted == 0) return type(uint256).max;
+        uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        return (collateralAdjustedForThreshold * PRECISION) / totalDscMinted;
+    }
+
     /////////////////////////////////////////////
     ///// Public & Internal View Function ///////
     ////////////////////////////////////////////
@@ -241,5 +265,49 @@ contract DSCEngine {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeed[token]);
         (,int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         return (uint256(price)* ADDITIONAL_FEED_PRECISION * amount) / PRECISION; //(1000*1e8)* 1000 * 1e18
+    }
+
+    function getAccountInformation(address user) external view returns(uint256 totalDscMinted, uint256 collateralValueInUsd){
+         (totalDscMinted, collateralValueInUsd) =  _getAccountInformation(user);
+    }
+
+    function getPrecision() external pure returns (uint256) {
+        return PRECISION;
+    }
+
+    function getAdditionalFeedPrecision() external pure returns (uint256) {
+        return ADDITIONAL_FEED_PRECISION;
+    }
+
+    function getLiquidationThreshold() external pure returns (uint256) {
+        return LIQUIDATION_THRESHOLD;
+    }
+
+    function getLiquidationBonus() external pure returns (uint256) {
+        return LIQUIDATION_BONUS;
+    }
+
+    function getLiquidationPrecision() external pure returns (uint256) {
+        return LIQUIDATION_PRECISION;
+    }
+
+    function getMinHealthFactor() external pure returns (uint256) {
+        return MINT_HEALTH_FACTOR;
+    }
+
+    function getCollateralTokens() external view returns (address[] memory) {
+        return s_collateralTokens;
+    }
+
+    function getDsc() external view returns (address) {
+        return address(i_dsc);
+    }
+
+    function getCollateralTokenPriceFeed(address token) external view returns (address) {
+        return s_priceFeed[token];
+    }
+
+    function getHealthFactor(address user) external view returns (uint256) {
+        return _healthFactor(user);
     }
 }
